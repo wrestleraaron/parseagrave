@@ -1,5 +1,18 @@
+'''
+Given a grave id number from the findagrave[.]com website and return the following information:
+    Birthdate
+    Birthplace
+    Deathdate
+    Deathplace
+    Parents
+    Spouse
+    Siblings
+This recursively goes through all the parents returning all parents identified.
+
+Output is to a json file supplied by prompt to the user.
+'''
 import json
-import lxml
+import re
 import requests
 from bs4 import BeautifulSoup, ResultSet, Tag
 
@@ -34,7 +47,7 @@ def get_grave_by_id(base_url: str, id_number: int) -> str:
         req = requests.get(req_url, headers=hdrs, timeout=60)
         req.raise_for_status()
     except requests.exceptions.RequestException as err:
-        raise f'Failed to get data from page {count}. Error: {err}'
+        raise f'Failed to get data from page. Error: {err}'
 
     return req.text
 
@@ -43,7 +56,7 @@ def parse_page_info(page_info: ResultSet) -> dict[str, dict]:
     '''
     Parses information about family members from a webpage result set.
 
-    This function takes a bs4.BeautifulSoup.ResultSet object containing the parsed 
+    This function takes a bs4.BeautifulSoup.ResultSet object containing the parsed
     HTML structure of a webpage. It iterates through the information for each
     family member and extracts details like name, URL of the individual page,
     birth date, and death date. Birth and death dates are assigned a default value
@@ -65,18 +78,20 @@ def parse_page_info(page_info: ResultSet) -> dict[str, dict]:
     ret_dict = {}
     for _count, records in enumerate(page_info):
         family_recs = records.find_all('div', class_='member-item d-flex mb-2')
-        for _counter,info in enumerate(family_recs):
+        for _counter, info in enumerate(family_recs):
             name = info.find('h3').text.strip()
             url = info['data-href']
             try:
-                bday = info.find('span', {'itemprop': 'birthDate'}).text.strip()
+                bday = info.find('span',
+                                 {'itemprop': 'birthDate'}).text.strip()
             except AttributeError:
                 bday = "1 Jan 1001"
             try:
-                dday = info.find('span', {'itemprop': 'deathDate'}).text.strip()
+                dday = info.find('span',
+                                 {'itemprop': 'deathDate'}).text.strip()
             except AttributeError:
                 dday = "1 Jan 1001"
-            tmp_dict = { name: {'url': url, 'bday': bday, 'dday': dday}}
+            tmp_dict = {name: {'url': url, 'bday': bday, 'dday': dday}}
             relationship = records.find('b').text.strip()
             if relationship in ret_dict:
                 ret_dict[relationship].update(tmp_dict)
@@ -92,7 +107,7 @@ def get_birth_record(bio: Tag) -> dict:
     This function parses a bs4.BeautifulSoup.Tag representing a biographical
     section and attempts to extract the birth date and birthplace information.
     It searches for elements with specific properties (itemprop) to identify
-    relevant data. If the elements are not found, the function continues 
+    relevant data. If the elements are not found, the function continues
     processing other records without raising exceptions.
 
     Args:
@@ -106,9 +121,11 @@ def get_birth_record(bio: Tag) -> dict:
     birth_data = {}
     for _count, record in enumerate(bio.find_all('dd')):
         try:
-            birth_data['birthdate'] = record.find('time', {'itemprop': 'birthDate'}).text.strip()
-            birth_data['birthplace'] = record.find('div', {'itemprop': 'birthPlace'}).text.strip()
-        except:
+            birth_data['birthdate'] = record.find(
+                'time', {'itemprop': 'birthDate'}).text.strip()
+            birth_data['birthplace'] = record.find(
+                'div', {'itemprop': 'birthPlace'}).text.strip()
+        except (KeyError, ValueError, AttributeError):
             pass
     return birth_data
 
@@ -120,7 +137,7 @@ def get_death_record(bio: Tag) -> dict:
     This function parses a bs4.BeautifulSoup.Tag representing a biographical
     section and attempts to extract the death date and deathplace information.
     It searches for elements with specific properties (itemprop) to identify
-    relevant data. If the elements are not found, the function continues 
+    relevant data. If the elements are not found, the function continues
     processing other records without raising exceptions.
 
     Args:
@@ -132,11 +149,13 @@ def get_death_record(bio: Tag) -> dict:
         the corresponding key will have an empty string value.
     '''
     death_data = {}
-    for i,j in enumerate(bio.find_all('dd')):
+    for _count, record in enumerate(bio.find_all('dd')):
         try:
-            death_data['deathdate'] = j.find('span', {'itemprop': 'deathDate'}).text.strip()
-            death_data['deathplace'] = j.find('div', {'itemprop': 'deathPlace'}).text.strip()
-        except:
+            death_data['deathdate'] = record.find(
+                'span', {'itemprop': 'deathDate'}).text.strip()
+            death_data['deathplace'] = record.find(
+                'div', {'itemprop': 'deathPlace'}).text.strip()
+        except (KeyError, ValueError, AttributeError):
             pass
     return death_data
 
@@ -150,6 +169,8 @@ def get_name(web_data: BeautifulSoup) -> str:
     chain of nested element searches based on class names and IDs. If any element
     in the chain is not found, the function returns an empty string.
 
+    Extra spaces are removed from the name and "VVeteran" is changed "Veteran"
+
     Args:
     web_data (BeautifulSoup): A BeautifulSoup object representing the parsed
         HTML structure of a webpage.
@@ -160,11 +181,13 @@ def get_name(web_data: BeautifulSoup) -> str:
 
     '''
     name = web_data.find('div', {'class': 'main-wrap'})\
-           .find('section', {'id': "content"})\
-           .find('div', {'class': 'container-xl section-bio-cover'})\
-           .find('div', {'class': 'row flex-print-nowrap'})\
-           .find('div', {'class': 'col-12 col-md-7 col-print-auto mt-sm-3'})\
-           .find('h1').text
+        .find('section', {'id': "content"})\
+        .find('div', {'class': 'container-xl section-bio-cover'})\
+        .find('div', {'class': 'row flex-print-nowrap'})\
+        .find('div', {'class': 'col-12 col-md-7 col-print-auto mt-sm-3'})\
+        .find('h1').text
+    name = re.sub(' +', ' ', name)
+    name = re.sub('VVeteran', 'Veteran', name)
     return name
 
 
@@ -200,8 +223,8 @@ def get_birth_death_records(web_data: BeautifulSoup) -> Tag:
                           .find('div', {'class': 'row flex-print-nowrap'})\
                           .find('div', {'class': 'col-12 col-md-7 col-print-auto mt-sm-3'})\
                           .find('dl', {'class': 'mem-events row row-cols-2 gx-2'})
-    except:
-            section = web_data.find('div', {'class': 'main-wrap'})\
+    except (KeyError, ValueError, AttributeError):
+        section = web_data.find('div', {'class': 'main-wrap'})\
                           .find('section', {'id': 'content'})\
                           .find('div', {'class': 'nonfamous-mem on-photo'})\
                           .find('div', {'class': 'section-first memorial-overview theme-bg'})\
@@ -212,7 +235,7 @@ def get_birth_death_records(web_data: BeautifulSoup) -> Tag:
     return section
 
 
-def get_next_parent(person_rec: dict, person: str) -> list:
+def get_next_parent(person_rec: dict) -> list:
     '''
     Extracts URLs for the next-generation parents from a person's record.
 
@@ -220,12 +243,11 @@ def get_next_parent(person_rec: dict, person: str) -> list:
     identifying the person within that record (e.g. their name). It assumes the
     record contains a 'Parents' key with nested dictionaries for each parent.
     The function extracts the URLs for these parents from the 'url' key within
-    each parent's dictionary. 
+    each parent's dictionary.
 
     Args:
     person_rec (dict): A dictionary representing a person's record, containing
         information about the person and potentially their parents.
-    person (str): A string identifying the person within the record (e.g. their name).
 
     Returns:
     list: A list containing URLs for the next-generation parents found in the
@@ -234,11 +256,11 @@ def get_next_parent(person_rec: dict, person: str) -> list:
     '''
     parent_lst = []
     if 'Parents' in person_rec:
-        for key, val in person_rec['Parents'].items():
+        for _key, val in person_rec['Parents'].items():
             parent_lst.append(val['url'].split('/', 3)[2])
     return parent_lst
 
-# write a google-style docstring for the following python function
+
 def get_info(rec_num: str, grave_url: str, ret_dict: dict) -> dict:
     '''
     Recursively extracts information for a person from a findagrave.com website.
@@ -279,7 +301,7 @@ def get_info(rec_num: str, grave_url: str, ret_dict: dict) -> dict:
         information for the current person and potentially their next generation
         (if found).
     '''
-    person_info = get_grave_by_id(grave_url, rec_num) # 120297053
+    person_info = get_grave_by_id(grave_url, rec_num)  # 120297053
     soup = BeautifulSoup(person_info, "lxml")
 
     name = get_name(soup)
@@ -293,7 +315,7 @@ def get_info(rec_num: str, grave_url: str, ret_dict: dict) -> dict:
 
     parents[name].update(parse_page_info(content))
     ret_dict.update(parents)
-    next_gen = get_next_parent(parents[name], name)
+    next_gen = get_next_parent(parents[name])
     if len(next_gen) != 0:
         for record in next_gen:
             print(f'Looking up {record}')
@@ -301,14 +323,40 @@ def get_info(rec_num: str, grave_url: str, ret_dict: dict) -> dict:
     return ret_dict
 
 
-initial_person = ''
-parents = {}
-parents = get_info(initial_person, URL, parents)
+def get_user_data() -> tuple[str, str]:
+    '''
+    Prompts the user for initial grave ID and filename for output storage.
+
+    This function interacts with the user to gather input required for further
+    processing. It prompts the user to enter two pieces of information:
+
+    * Initial Grave ID: A string representing the starting ID for processing
+        grave records.
+    * Filename: A string representing the desired filename where the data
+        will be stored in the working directory
+
+    The function validates neither of the inputs. It simply collects the user's
+    response and returns a tuple containing both the ID and filename.
+
+    Args:
+    None
+
+    Returns:
+    tuple[str, str]: A tuple containing the entered grave ID (string) and
+        filename (string).
+    '''
+    person_id = input('Please enter the initial grave id: ')
+    fname = input('Please enter the filename to write data: ')
+    return (person_id, fname)
 
 
-print(f'{len(parents)} records found!')
-with open('output.txt', 'w', encoding='utf-8') as output:+
-    array = [{i: parents[i]} for i in parents]
+(initial_person, filename) = get_user_data()
+grave_info = {}
+grave_info = get_info(initial_person, URL, grave_info)
+
+print(f'{len(grave_info)} records found!')
+with open(filename, 'w', encoding='utf-8') as output:
+    array = [{i: grave_info[i]} for i in grave_info]
     output.write(json.dumps(array))
 
 print('Exiting normally')
