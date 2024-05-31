@@ -4,9 +4,9 @@
 This is a python-based application that prompts user for a grave ID from findagrave.com and will find the birthdate and place, deathdate and place, parents, siblings and spouses for that ID. It then recursively gets the same information for all parents until no more parents are identified. The results are output in a json-formatted file.
 
 
-## Badges
+## License
 
-[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-yellow.svg)](https://opensource.org/licenses/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 
 ## Authors
